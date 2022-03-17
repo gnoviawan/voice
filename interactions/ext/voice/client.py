@@ -1,5 +1,5 @@
-from interactions.client import Client
 from interactions.api.enums import OpCodeType
+from interactions.client import Client
 
 
 class VoiceClient(Client):
@@ -38,13 +38,15 @@ class VoiceClient(Client):
         """
 
         # todo error
+        self._websocket._voice_connections[guild_id].close = True
+
         await self._websocket._send_packet(
             {
                 "op": OpCodeType.VOICE_STATE,
                 "d": {
                     "guild_id": guild_id,
                     "channel_id": None,
-                }
+                },
             }
         )
         del self._websocket._voice_connections[guild_id]

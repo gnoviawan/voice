@@ -1,37 +1,27 @@
-from pprint import pprint
-
 try:
     from orjson import dumps, loads
 except ImportError:
     from json import dumps, loads
 
-from asyncio import (
-    ensure_future,
-    get_event_loop,
-    get_running_loop,
-    new_event_loop,
-    sleep, Event, Task,
-)
+from asyncio import Event, Task, ensure_future, sleep
 from datetime import datetime
 from logging import Logger
-from sys import version_info
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiohttp import WSMessage
 
 import interactions
-from interactions import Member, Option, ClientPresence
+from interactions import ClientPresence, Member, Option
 from interactions.api.cache import Cache, Item, Storage
 from interactions.api.enums import OpCodeType
-from .error import VoiceException
 from interactions.api.gateway import WebSocketClient, _Heartbeat
 from interactions.api.http import HTTPClient  # TODO: change to new HTTP
-from interactions.api.models.misc import (MISSING, DictSerializerMixin,
-                                          Snowflake)
+from interactions.api.models.misc import MISSING, DictSerializerMixin, Snowflake
 from interactions.base import get_logger
 
 from .client import VoiceClient
 from .enums import VoiceOpCodeType
+from .error import VoiceException
 
 log: Logger = get_logger("voice")
 
@@ -52,6 +42,7 @@ class VoiceCache(Cache):
 class VoiceConnectionWebSocketClient:
     """
     A class representing the clients voice channel connection.
+    todo doc
     """
 
     def __init__(self, guild_id: int, data: dict, _http: HTTPClient):
@@ -65,6 +56,7 @@ class VoiceConnectionWebSocketClient:
         self.__task = None
         self.__secret_key: list = []
         self._mode = None
+        self._close = False  # determines whether closing of the connection is wanted or not
         self._media_session_id = None
         self.__heartbeater: _Heartbeat = _Heartbeat(loop=None)
         self.ready = Event()
@@ -113,14 +105,22 @@ class VoiceConnectionWebSocketClient:
 
                 if isinstance(stream, int):
                     print(stream)
-                    raise VoiceException(stream)
+                    if self._close and stream == 4014:
+                        log.debug("Closing Voice Connection.")
+                    else:
+                        raise VoiceException(stream)
 
-                if (
-                    self._client.close_code in range(4001, 4006)
-                    or self._client.close_code in (4009, 4011, 4012, 4014, 4016)
+                if self._client.close_code in range(4001, 4006) or self._client.close_code in (
+                    4009,
+                    4011,
+                    4012,
+                    4014,
+                    4016,
                 ):
-                    raise VoiceException(self._client.close_code)
-
+                    if self._close and stream == 4014:
+                        log.debug("Closing Voice Connection.")
+                    else:
+                        raise VoiceException(self._client.close_code)
 
                 await self._handle_connection(stream, shard)
 
@@ -155,8 +155,8 @@ class VoiceConnectionWebSocketClient:
                 "data": {
                     "address": data.get("ip"),
                     "port": data.get("port"),
-                    "mode": "xsalsa20_poly1305"
-                }
+                    "mode": "xsalsa20_poly1305",
+                },
             },
         }
         log.debug(f"CONNECTING TO UDP: {payload}")
@@ -211,7 +211,6 @@ class VoiceConnectionWebSocketClient:
 
         if op == VoiceOpCodeType.RESUME:
             await self.__resume()
-
 
         # TODO: other opcodes
 
@@ -277,6 +276,8 @@ class VoiceConnectionWebSocketClient:
 class VoiceWebSocketClient(WebSocketClient):
     """
     A modified WebSocketClient for Voice Events.
+
+    todo: doc?
     """
 
     def __init__(
@@ -312,7 +313,6 @@ class VoiceWebSocketClient(WebSocketClient):
         event: Optional[str] = stream.get("t")
         data: Optional[Dict[str, Any]] = stream.get("d")
 
-
         if op != OpCodeType.DISPATCH:
             await super()._handle_connection(stream, shard, presence)
 
@@ -344,7 +344,7 @@ class VoiceWebSocketClient(WebSocketClient):
                     self._http.cache.voice_states.add(_item)
                 data["_client"] = self._http
 
-                self._dispatch.dispatch(f"on_{name}", __obj(**data)) # noqa
+                self._dispatch.dispatch(f"on_{name}", __obj(**data))  # noqa
             elif event == "VOICE_SERVER_UPDATE":
                 self.__voice_connect_data[int(data["guild_id"])]["token"] = data["token"]
                 self.__voice_connect_data[int(data["guild_id"])]["endpoint"] = data["endpoint"]
@@ -372,7 +372,9 @@ class VoiceWebSocketClient(WebSocketClient):
         await self._send_packet(data=payload)
         await sleep(2)
         voice_client = VoiceConnectionWebSocketClient(
-            guild_id=int(guild_id), data=self.__voice_connect_data[int(guild_id)], _http=self._http,
+            guild_id=int(guild_id),
+            data=self.__voice_connect_data[int(guild_id)],
+            _http=self._http,
         )
         self._voice_connections[int(guild_id)] = voice_client
         await voice_client._connect()

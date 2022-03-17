@@ -18,7 +18,8 @@ class VoiceCache(Cache):
 
 class VoiceConnectionWebSocketClient:
 
-    _client: ClientWebSocketResponse
+    _close: bool
+
     async def _send_packet(self, data: Dict[str, Any]) -> None: ...
     ...
 
