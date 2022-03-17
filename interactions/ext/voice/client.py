@@ -1,4 +1,5 @@
 from interactions.client import Client
+from interactions.api.enums import OpCodeType
 
 
 class VoiceClient(Client):
@@ -22,8 +23,30 @@ class VoiceClient(Client):
         :return:
         """
 
-        await self._websocket._connect(
+        return await self._websocket._connect(
             guild_id=guild_id, channel_id=channel_id, self_mute=self_mute, self_deaf=self_deaf
         )
+
+    async def disconnect(
+        self,
+        guild_id: int,
+    ) -> None:
+        """
+        Removes the bot of the channel
+        :param guild_id:
+        :return:
+        """
+
+        # todo error
+        await self._websocket._send_packet(
+            {
+                "op": OpCodeType.VOICE_STATE,
+                "d": {
+                    "guild_id": guild_id,
+                    "channel_id": None,
+                }
+            }
+        )
+        del self._websocket._voice_connections[guild_id]
 
     # TODO: more methods

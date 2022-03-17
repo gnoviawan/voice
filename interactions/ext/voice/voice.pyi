@@ -1,6 +1,10 @@
+from aiohttp import ClientWebSocketResponse
+from aiohttp.client import _WSRequestContextManager
+
 import interactions
+from interactions import ClientPresence, Option
 from interactions.api.models.misc import MISSING, DictSerializerMixin, Snowflake
-from typing import Optional, Union, Tuple, Dict
+from typing import Optional, Union, Tuple, Dict, Any, List
 from datetime import datetime
 from interactions.api.models.member import Member
 from interactions.api.gateway import WebSocketClient
@@ -12,6 +16,12 @@ class VoiceCache(Cache):
     def __init__(self): ...
     voice_states: Storage
 
+class VoiceConnectionWebSocketClient:
+
+    _client: ClientWebSocketResponse
+    async def _send_packet(self, data: Dict[str, Any]) -> None: ...
+    ...
+
 class VoiceWebSocketClient(WebSocketClient):
     def __init__(
         self,
@@ -21,19 +31,27 @@ class VoiceWebSocketClient(WebSocketClient):
         sequence=MISSING,
     ) -> None: ...
     __voice_connect_data: Dict[int, dict]
+    _voice_connections: Dict[int, VoiceConnectionWebSocketClient]
+
     def __contextualize(self, data: dict) -> object: ...
     def __sub_command_context(
-            self, data: Union[dict, Option], context: object
+        self, data: Union[dict, Option], context: object
     ) -> Union[Tuple[str], dict]: ...
     def __option_type_context(self, context: object, type: int) -> dict: ...
+    async def _handle_connection(
+        self,
+        stream: Dict[str, Any],
+        shard: Optional[List[Tuple[int]]] = MISSING,
+        presence: Optional[ClientPresence] = MISSING,
+    ) -> None: ...
     def _dispatch_event(self, event: str, data: dict) -> None: ...
     async def _connect(
-            self,
-            guild_id: int,
-            channel_id: int,
-            self_mute: bool = False,
-            self_deaf: bool = False,
-    ): ...
+        self,
+        guild_id: int,
+        channel_id: int,
+        self_mute: bool = False,
+        self_deaf: bool = False,
+    ) -> None: ...
 
 class VoiceState(DictSerializerMixin):
     _client: HTTPClient

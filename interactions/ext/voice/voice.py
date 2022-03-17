@@ -79,7 +79,6 @@ class VoiceConnectionWebSocketClient:
         """
 
         packet: WSMessage = await self._client.receive()
-        pprint(packet.data)
         return loads(str(packet.data)) if packet and isinstance(packet.data, (str, int)) else None
 
     async def _connect(
@@ -96,7 +95,7 @@ class VoiceConnectionWebSocketClient:
         self.__heartbeater.delay = 0.0
         self._closed = False
 
-        async with self._http._req._session.ws_connect(self.endpoint) as self._client:
+        async with self._http._req._session.ws_connect(f"{self.endpoint}?v=4") as self._client:
             self._closed = self._client.closed
 
             if self._closed:
@@ -112,13 +111,16 @@ class VoiceConnectionWebSocketClient:
                     await self._connect()
                     break
 
+                if isinstance(stream, int):
+                    print(stream)
+                    raise VoiceException(stream)
+
                 if (
-                        self._client.close_code in range(4001, 4006)
-                        or self._client.close_code in (4009, 4011, 4012, 4014, 4016)
+                    self._client.close_code in range(4001, 4006)
+                    or self._client.close_code in (4009, 4011, 4012, 4014, 4016)
                 ):
                     raise VoiceException(self._client.close_code)
 
-                pprint(self._client.close_code)
 
                 await self._handle_connection(stream, shard)
 
@@ -190,10 +192,13 @@ class VoiceConnectionWebSocketClient:
             await self.__identify(shard)
 
         if op == VoiceOpCodeType.READY:
-            #await self._connect_to_udp(data)
+            await self._connect_to_udp(data)
             self._ready = data
             log.debug(f"READY (session_id: {self.session_id}, sequence: {self.sequence})")
             self.ready.set()
+
+        if op == VoiceOpCodeType.HEARTBEAT:
+            await self.__heartbeat()
 
         if op == VoiceOpCodeType.HEARTBEAT_ACK:
             log.debug("HEARTBEAT_ACK")
@@ -203,6 +208,10 @@ class VoiceConnectionWebSocketClient:
             self.__secret_key = data["secret_key"]
             self._media_session_id = data["media_session_id"]
             self._mode = data["mode"]
+
+        if op == VoiceOpCodeType.RESUME:
+            await self.__resume()
+
 
         # TODO: other opcodes
 
@@ -279,7 +288,7 @@ class VoiceWebSocketClient(WebSocketClient):
     ) -> None:
         super().__init__(token, intents, session_id, sequence)
         self.__voice_connect_data: Dict[int, dict] = {}
-        self.__voice_connections: Dict[int, VoiceConnectionWebSocketClient] = {}
+        self._voice_connections: Dict[int, VoiceConnectionWebSocketClient] = {}
 
     # Note: calling a "private" function of WebSocketClient will have to be super()-ed like below
     def __contextualize(self, data: dict) -> object:
@@ -365,8 +374,8 @@ class VoiceWebSocketClient(WebSocketClient):
         voice_client = VoiceConnectionWebSocketClient(
             guild_id=int(guild_id), data=self.__voice_connect_data[int(guild_id)], _http=self._http,
         )
+        self._voice_connections[int(guild_id)] = voice_client
         await voice_client._connect()
-        self.__voice_connections[int(guild_id)] = voice_client
 
 
 class VoiceState(DictSerializerMixin):
