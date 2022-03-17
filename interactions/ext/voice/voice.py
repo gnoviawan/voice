@@ -1,22 +1,29 @@
+from pprint import pprint
+
 try:
     from orjson import dumps, loads
 except ImportError:
     from json import dumps, loads
 
-from asyncio import *  # noqa # isort and black battling on this,
+from asyncio import (
+    ensure_future,
+    get_event_loop,
+    get_running_loop,
+    new_event_loop,
+    sleep, Event, Task,
+)
 from datetime import datetime
 from logging import Logger
 from sys import version_info
-from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiohttp import WSMessage
 
 import interactions
-from interactions import Member, Option
+from interactions import Member, Option, ClientPresence
 from interactions.api.cache import Cache, Item, Storage
 from interactions.api.enums import OpCodeType
-from interactions.api.error import GatewayException
+from .error import VoiceException
 from interactions.api.gateway import WebSocketClient, _Heartbeat
 from interactions.api.http import HTTPClient  # TODO: change to new HTTP
 from interactions.api.models.misc import (MISSING, DictSerializerMixin,
@@ -53,14 +60,14 @@ class VoiceConnectionWebSocketClient:
         self.endpoint = f"wss://{data.get('endpoint')}"
         self.token = data.get("token")
         self.user_id = data.get("user_id")
+        self.sequence = data.get("sequence")
         self._http = _http
-        try:
-            self._loop = get_event_loop() if version_info < (3, 10) else get_running_loop()  # noqa
-        except RuntimeError:
-            self._loop = new_event_loop()  # noqa
-        self.__heartbeater: _Heartbeat = _Heartbeat(
-            loop=self._loop if version_info < (3, 10) else None
-        )
+        self.__task = None
+        self.__secret_key: list = []
+        self._mode = None
+        self._media_session_id = None
+        self.__heartbeater: _Heartbeat = _Heartbeat(loop=None)
+        self.ready = Event()
 
     @property
     async def __receive_packet_stream(self) -> Optional[Dict[str, Any]]:
@@ -72,7 +79,8 @@ class VoiceConnectionWebSocketClient:
         """
 
         packet: WSMessage = await self._client.receive()
-        return loads(packet.data) if packet and isinstance(packet.data, str) else None
+        pprint(packet.data)
+        return loads(str(packet.data)) if packet and isinstance(packet.data, (str, int)) else None
 
     async def _connect(
         self,
@@ -83,8 +91,6 @@ class VoiceConnectionWebSocketClient:
 
         :param shard?: The shards to establish a connection with. Defaults to ``None``.
         :type shard: Optional[List[Tuple[int]]]
-        :param presence: The presence to carry with. Defaults to ``None``.
-        :type presence: Optional[ClientPresence]
         """
         self._client = None
         self.__heartbeater.delay = 0.0
@@ -98,18 +104,31 @@ class VoiceConnectionWebSocketClient:
 
             while not self._closed:
                 stream = await self.__receive_packet_stream
-                print(stream)
 
                 if stream is None:
                     continue
+
                 if self._client is None:
                     await self._connect()
                     break
 
-                if self._client.close_code in range(4010, 4014) or self._client.close_code == 4004:
-                    raise GatewayException(self._client.close_code)
+                if (
+                        self._client.close_code in range(4001, 4006)
+                        or self._client.close_code in (4009, 4011, 4012, 4014, 4016)
+                ):
+                    raise VoiceException(self._client.close_code)
+
+                pprint(self._client.close_code)
 
                 await self._handle_connection(stream, shard)
+
+    async def __heartbeat(self):
+        payload: dict = {
+            "op": VoiceOpCodeType.HEARTBEAT,
+            "d": self.sequence,
+        }
+        await self._send_packet(payload)
+        log.debug("HEARTBEAT")
 
     async def _manage_heartbeat(self) -> None:
         """Manages the heartbeat loop."""
@@ -119,11 +138,27 @@ class VoiceConnectionWebSocketClient:
             if self.__heartbeater.event.is_set():
                 await self.__heartbeat()
                 self.__heartbeater.event.clear()
-                await sleep(self.__heartbeater.delay / 1000)  # noqa
+                await sleep(self.__heartbeater.delay / 1000)
             else:
                 log.debug("HEARTBEAT_ACK missing, reconnecting...")
                 await self.__restart()
                 break
+
+    async def _connect_to_udp(self, data):
+
+        payload = {
+            "op": VoiceOpCodeType.SELECT_PROTOCOL,
+            "d": {
+                "protocol": "udp",
+                "data": {
+                    "address": data.get("ip"),
+                    "port": data.get("port"),
+                    "mode": "xsalsa20_poly1305"
+                }
+            },
+        }
+        log.debug(f"CONNECTING TO UDP: {payload}")
+        await self._send_packet(payload)
 
     async def _handle_connection(
         self,
@@ -137,8 +172,6 @@ class VoiceConnectionWebSocketClient:
         :type stream: Dict[str, Any]
         :param shard?: The shards to establish a connection with. Defaults to ``None``.
         :type shard: Optional[List[Tuple[int]]]
-        :param presence: The presence to carry with. Defaults to ``None``.
-        :type presence: Optional[ClientPresence]
         """
         op: Optional[int] = stream.get("op")
         data: Optional[Dict[str, Any]] = stream.get("d")
@@ -149,14 +182,49 @@ class VoiceConnectionWebSocketClient:
             self.__heartbeater.delay = data["heartbeat_interval"]
             self.__heartbeater.event.set()
 
-            # if self.__task:
-            #   self.__task.cancel()  # so we can reduce redundant heartbeat bg tasks.
+            if self.__task:
+                self.__task.cancel()  # so we can reduce redundant heartbeat bg tasks.
 
-            self.__task = ensure_future(self._manage_heartbeat())  # noqa
+            self.__task = ensure_future(self._manage_heartbeat())
 
             await self.__identify(shard)
 
-        # TODO: other opcode
+        if op == VoiceOpCodeType.READY:
+            #await self._connect_to_udp(data)
+            self._ready = data
+            log.debug(f"READY (session_id: {self.session_id}, sequence: {self.sequence})")
+            self.ready.set()
+
+        if op == VoiceOpCodeType.HEARTBEAT_ACK:
+            log.debug("HEARTBEAT_ACK")
+            self.__heartbeater.event.set()
+
+        if op == VoiceOpCodeType.SESSION_DESCRIPTION:
+            self.__secret_key = data["secret_key"]
+            self._media_session_id = data["media_session_id"]
+            self._mode = data["mode"]
+
+        # TODO: other opcodes
+
+    async def __restart(self):
+        """Restart the client's connection and heartbeat with the Gateway."""
+        if self.__task:
+            self.__task: Task
+            self.__task.cancel()
+        self._closed = True
+        self._client = None  # clear pending waits
+        self.__heartbeater.event.clear()
+        await self._connect()
+
+    async def __resume(self) -> None:
+        """Sends a ``RESUME`` packet to the gateway."""
+        payload: dict = {
+            "op": VoiceOpCodeType.RESUME,
+            "d": {"token": self.token, "session_id": self.session_id, "server_id": self.guild_id},
+        }
+        log.debug(f"RESUMING: {payload}")
+        await self._send_packet(payload)
+        log.debug("RESUME")
 
     async def __identify(self, shard: Optional[List[Tuple[int]]] = None) -> None:
         """
@@ -164,10 +232,8 @@ class VoiceConnectionWebSocketClient:
 
         :param shard?: The shard ID to identify under.
         :type shard: Optional[List[Tuple[int]]]
-        :param presence?: The presence to change the bot to on identify.
-        :type presence: Optional[ClientPresence]
         """
-        print("run")
+
         self.__shard = shard
         payload: dict = {
             "op": VoiceOpCodeType.IDENTIFY,
@@ -193,7 +259,6 @@ class VoiceConnectionWebSocketClient:
         :param data: The data to send to the Gateway.
         :type data: Dict[str, Any]
         """
-        self._last_send = perf_counter()
         _data = dumps(data) if isinstance(data, dict) else data
         packet: str = _data.decode("utf-8") if isinstance(_data, bytes) else _data
         await self._client.send_str(packet)
@@ -214,6 +279,7 @@ class VoiceWebSocketClient(WebSocketClient):
     ) -> None:
         super().__init__(token, intents, session_id, sequence)
         self.__voice_connect_data: Dict[int, dict] = {}
+        self.__voice_connections: Dict[int, VoiceConnectionWebSocketClient] = {}
 
     # Note: calling a "private" function of WebSocketClient will have to be super()-ed like below
     def __contextualize(self, data: dict) -> object:
@@ -227,7 +293,28 @@ class VoiceWebSocketClient(WebSocketClient):
     def __option_type_context(self, context: object, type: int) -> dict:
         return super()._WebSocketClient__option_type_context(context, type)
 
-    def _dispatch_event(self, event: str, data: dict) -> None:
+    async def _handle_connection(
+        self,
+        stream: Dict[str, Any],
+        shard: Optional[List[Tuple[int]]] = MISSING,
+        presence: Optional[ClientPresence] = MISSING,
+    ) -> None:
+        op: Optional[int] = stream.get("op")
+        event: Optional[str] = stream.get("t")
+        data: Optional[Dict[str, Any]] = stream.get("d")
+
+
+        if op != OpCodeType.DISPATCH:
+            await super()._handle_connection(stream, shard, presence)
+
+        elif event and "voice" not in event.lower():
+            await super()._handle_connection(stream, shard, presence)
+
+        else:
+            log.debug(f"{event}: {data}")
+            self._dispatch_event(event, data, stream)  # to get the nonce stream is needed.
+
+    def _dispatch_event(self, event: str, data: dict, stream: Optional[dict] = MISSING) -> None:
         if event != "VOICE_STATE_UPDATE" and event != "VOICE_SERVER_UPDATE":
             super()._dispatch_event(event, data)
         else:
@@ -248,10 +335,11 @@ class VoiceWebSocketClient(WebSocketClient):
                     self._http.cache.voice_states.add(_item)
                 data["_client"] = self._http
 
-                self._dispatch.dispatch(f"on_{name}", __obj(**data))  # noqa
+                self._dispatch.dispatch(f"on_{name}", __obj(**data)) # noqa
             elif event == "VOICE_SERVER_UPDATE":
                 self.__voice_connect_data[int(data["guild_id"])]["token"] = data["token"]
                 self.__voice_connect_data[int(data["guild_id"])]["endpoint"] = data["endpoint"]
+                self.__voice_connect_data[int(data["guild_id"])]["sequence"] = stream.get("s")
 
         self._dispatch.dispatch("raw_socket_create", data)
 
@@ -261,7 +349,8 @@ class VoiceWebSocketClient(WebSocketClient):
         channel_id: int,
         self_mute: bool = False,
         self_deaf: bool = False,
-    ):
+    ) -> None:
+        # TODO check if already connected
         payload: dict = {
             "op": OpCodeType.VOICE_STATE,
             "d": {
@@ -272,11 +361,12 @@ class VoiceWebSocketClient(WebSocketClient):
             },
         }
         await self._send_packet(data=payload)
-        await sleep(2)  # noqa
+        await sleep(2)
         voice_client = VoiceConnectionWebSocketClient(
-            guild_id=int(guild_id), data=self.__voice_connect_data[int(guild_id)], _http=self._http
+            guild_id=int(guild_id), data=self.__voice_connect_data[int(guild_id)], _http=self._http,
         )
         await voice_client._connect()
+        self.__voice_connections[int(guild_id)] = voice_client
 
 
 class VoiceState(DictSerializerMixin):
