@@ -1,6 +1,3 @@
-from aiohttp import ClientWebSocketResponse
-from aiohttp.client import _WSRequestContextManager
-
 import interactions
 from interactions import ClientPresence, Option
 from interactions.api.models.misc import MISSING, DictSerializerMixin, Snowflake
@@ -19,6 +16,7 @@ class VoiceCache(Cache):
 class VoiceConnectionWebSocketClient:
 
     _close: bool
+    _closed: bool
 
     async def _send_packet(self, data: Dict[str, Any]) -> None: ...
     ...
@@ -52,6 +50,10 @@ class VoiceWebSocketClient(WebSocketClient):
         channel_id: int,
         self_mute: bool = False,
         self_deaf: bool = False,
+    ) -> None: ...
+    async def _disconnect(
+        self,
+        guild_id: int
     ) -> None: ...
 
 class VoiceState(DictSerializerMixin):

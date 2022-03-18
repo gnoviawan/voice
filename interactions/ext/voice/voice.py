@@ -15,7 +15,7 @@ from interactions import ClientPresence, Member, Option
 from interactions.api.cache import Cache, Item, Storage
 from interactions.api.enums import OpCodeType
 from interactions.api.gateway import WebSocketClient, _Heartbeat
-from interactions.api.http import HTTPClient  # TODO: change to new HTTP
+from interactions.api.http.client import HTTPClient
 from interactions.api.models.misc import MISSING, DictSerializerMixin, Snowflake
 from interactions.base import get_logger
 
@@ -27,6 +27,8 @@ log: Logger = get_logger("voice")
 
 
 # TODO: switch to new cache once merged.
+
+# TODO?: Add custom events?
 
 
 class VoiceCache(Cache):
@@ -42,13 +44,13 @@ class VoiceCache(Cache):
 class VoiceConnectionWebSocketClient:
     """
     A class representing the clients voice channel connection.
-    todo doc
+    todo doc?
     """
 
     def __init__(self, guild_id: int, data: dict, _http: HTTPClient):
         self.guild_id = guild_id
         self.session_id = data.get("session_id")
-        self.endpoint = f"wss://{data.get('endpoint')}"
+        self.endpoint = f"wss://{data.get('endpoint')}?v=4"
         self.token = data.get("token")
         self.user_id = data.get("user_id")
         self.sequence = data.get("sequence")
@@ -56,6 +58,7 @@ class VoiceConnectionWebSocketClient:
         self.__task = None
         self.__secret_key: list = []
         self._mode = None
+        self._closed = False
         self._close = False  # determines whether closing of the connection is wanted or not
         self._media_session_id = None
         self.__heartbeater: _Heartbeat = _Heartbeat(loop=None)
@@ -87,7 +90,7 @@ class VoiceConnectionWebSocketClient:
         self.__heartbeater.delay = 0.0
         self._closed = False
 
-        async with self._http._req._session.ws_connect(f"{self.endpoint}?v=4") as self._client:
+        async with self._http._req._session.ws_connect(self.endpoint) as self._client:
             self._closed = self._client.closed
 
             if self._closed:
@@ -103,24 +106,26 @@ class VoiceConnectionWebSocketClient:
                     await self._connect()
                     break
 
-                if isinstance(stream, int):
-                    print(stream)
+                if (
+                    self._client.close_code in range(4001, 4006)
+                    or self._client.close_code
+                    in (
+                        4009,
+                        4011,
+                        4012,
+                        4014,
+                        4016,
+                    )
+                ) or isinstance(stream, int):
+                    if self.__task:
+                        self.__task.cancel()  # to be sure it stops
+                    self._closed = True
                     if self._close and stream == 4014:
                         log.debug("Closing Voice Connection.")
+                        break
                     else:
-                        raise VoiceException(stream)
-
-                if self._client.close_code in range(4001, 4006) or self._client.close_code in (
-                    4009,
-                    4011,
-                    4012,
-                    4014,
-                    4016,
-                ):
-                    if self._close and stream == 4014:
-                        log.debug("Closing Voice Connection.")
-                    else:
-                        raise VoiceException(self._client.close_code)
+                        code = self._client.close_code or stream
+                        raise VoiceException(code)
 
                 await self._handle_connection(stream, shard)
 
@@ -277,7 +282,7 @@ class VoiceWebSocketClient(WebSocketClient):
     """
     A modified WebSocketClient for Voice Events.
 
-    todo: doc?
+    todo: doc
     """
 
     def __init__(
@@ -359,7 +364,14 @@ class VoiceWebSocketClient(WebSocketClient):
         self_mute: bool = False,
         self_deaf: bool = False,
     ) -> None:
-        # TODO check if already connected
+        """
+
+        :param guild_id:
+        :param channel_id:
+        :param self_mute:
+        :param self_deaf:
+        :return:
+        """
         payload: dict = {
             "op": OpCodeType.VOICE_STATE,
             "d": {
@@ -379,12 +391,31 @@ class VoiceWebSocketClient(WebSocketClient):
         self._voice_connections[int(guild_id)] = voice_client
         await voice_client._connect()
 
+    async def _disconnect(self, guild_id: int) -> None:
+        """
+
+        :param guild_id:
+        :return:
+        """
+
+        self._voice_connections[guild_id]._close = True
+        payload = {
+            "op": OpCodeType.VOICE_STATE,
+            "d": {
+                "guild_id": guild_id,
+                "channel_id": None,
+            },
+        }
+
+        await self._send_packet(data=payload)
+        del self._voice_connections[guild_id]
+
 
 class VoiceState(DictSerializerMixin):
     """
     A class object representing the gateway event ``VOICE_STATE_UPDATE``
 
-    TODO: document
+    todo doc
     """
 
     __slots__ = (

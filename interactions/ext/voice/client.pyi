@@ -12,3 +12,8 @@ class VoiceClient(Client):
         self_deaf: bool = False,
         self_mute: bool = False,
     ) -> None: ...
+
+    async def disconnect(
+        self,
+        guild_id: int,
+    ) -> None: ...

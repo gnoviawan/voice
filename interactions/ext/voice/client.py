@@ -1,5 +1,9 @@
-from interactions.api.enums import OpCodeType
+from logging import Logger
+
+from interactions.base import get_logger
 from interactions.client import Client
+
+log: Logger = get_logger("client")
 
 
 class VoiceClient(Client):
@@ -22,6 +26,17 @@ class VoiceClient(Client):
         :param self_mute:
         :return:
         """
+        # check connection status if already "connected".
+
+        if guild_id in self._websocket._voice_connections.keys():
+            if self._websocket._voice_connections[guild_id]._closed is True:
+                del self._websocket._voice_connections[guild_id]
+
+            else:
+                log.warning(
+                    "Already connected to a voice channel! Disconnect before creating a new connection!"
+                )
+                return
 
         return await self._websocket._connect(
             guild_id=guild_id, channel_id=channel_id, self_mute=self_mute, self_deaf=self_deaf
@@ -37,18 +52,10 @@ class VoiceClient(Client):
         :return:
         """
 
-        # todo error
-        self._websocket._voice_connections[guild_id].close = True
+        if guild_id not in self._websocket._voice_connections.keys():
+            log.warning("Not connected to a voice channel!")
+            return
 
-        await self._websocket._send_packet(
-            {
-                "op": OpCodeType.VOICE_STATE,
-                "d": {
-                    "guild_id": guild_id,
-                    "channel_id": None,
-                },
-            }
-        )
-        del self._websocket._voice_connections[guild_id]
+        return await self._websocket._disconnect(guild_id=guild_id)
 
     # TODO: more methods
