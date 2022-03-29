@@ -6,7 +6,7 @@ with open("README.MD", "r") as f:
 setup(
     name="interactions-voice",
     version="1.0.0",
-    description="Enhanced interactions for interactions.py",
+    description="A voice-capable client for interactions.py",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/interactions-py/voice",
@@ -21,7 +21,6 @@ setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        "discord-py-interactions>=4.1.1",
         "pynacl>=1.5.0",
     ],
 )
