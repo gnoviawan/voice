@@ -21,6 +21,7 @@ setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
+        "discord-py-interactions>=4.1.1",
         "pynacl>=1.5.0",
     ],
 )
