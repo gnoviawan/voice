@@ -6,18 +6,23 @@ except ImportError:
 from asyncio import Event, Task, ensure_future, sleep
 from datetime import datetime
 from logging import Logger
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-from aiohttp import WSMessage
+from aiohttp import WSMessage, WSMsgType
+from aiohttp.http import WS_CLOSED_MESSAGE, WS_CLOSING_MESSAGE
+from nacl.secret import SecretBox
 
-import interactions
-from interactions import ClientPresence, Member, Option
 from interactions.api.cache import Cache, Item, Storage
 from interactions.api.enums import OpCodeType
 from interactions.api.gateway import WebSocketClient, _Heartbeat
 from interactions.api.http.client import HTTPClient
+from interactions.api.models.channel import Channel
+from interactions.api.models.guild import Guild
+from interactions.api.models.member import Member
 from interactions.api.models.misc import MISSING, DictSerializerMixin, Snowflake
+from interactions.api.models.presence import ClientPresence
 from interactions.base import get_logger
+from interactions.client import Client
 
 from .client import VoiceClient
 from .enums import VoiceOpCodeType
@@ -27,8 +32,6 @@ log: Logger = get_logger("voice")
 
 
 # TODO: switch to new cache once merged.
-
-# TODO?: Add custom events?
 
 
 class VoiceCache(Cache):
@@ -56,10 +59,14 @@ class VoiceConnectionWebSocketClient:
         self.sequence = data.get("sequence")
         self._http = _http
         self.__task = None
-        self.__secret_key: list = []
+        self.__box: SecretBox = None
+        self._port = None
+        self._ip = None
         self._mode = None
         self._closed = False
-        self._close = False  # determines whether closing of the connection is wanted or not
+        self._close = (
+            False  # determines whether closing of the connection is wanted or not -> disconnect
+        )
         self._media_session_id = None
         self.__heartbeater: _Heartbeat = _Heartbeat(loop=None)
         self.ready = Event()
@@ -74,6 +81,18 @@ class VoiceConnectionWebSocketClient:
         """
 
         packet: WSMessage = await self._client.receive()
+
+        if packet == WSMsgType.CLOSE:
+            await self._client.close()
+            return packet
+
+        elif packet == WS_CLOSED_MESSAGE:
+            return packet
+
+        elif packet == WS_CLOSING_MESSAGE:
+            await self._client.close()
+            return WS_CLOSED_MESSAGE
+
         return loads(str(packet.data)) if packet and isinstance(packet.data, (str, int)) else None
 
     async def _connect(
@@ -102,7 +121,7 @@ class VoiceConnectionWebSocketClient:
                 if stream is None:
                     continue
 
-                if self._client is None:
+                if self._client is None or stream == WS_CLOSED_MESSAGE or stream == WSMsgType.CLOSE:
                     await self._connect()
                     break
 
@@ -151,15 +170,15 @@ class VoiceConnectionWebSocketClient:
                 await self.__restart()
                 break
 
-    async def _connect_to_udp(self, data):
+    async def _connect_to_udp(self):
 
         payload = {
             "op": VoiceOpCodeType.SELECT_PROTOCOL,
             "d": {
                 "protocol": "udp",
                 "data": {
-                    "address": data.get("ip"),
-                    "port": data.get("port"),
+                    "address": self._ip,
+                    "port": self._port,
                     "mode": "xsalsa20_poly1305",
                 },
             },
@@ -183,8 +202,6 @@ class VoiceConnectionWebSocketClient:
         op: Optional[int] = stream.get("op")
         data: Optional[Dict[str, Any]] = stream.get("d")
 
-        log.debug(data)
-
         if op == VoiceOpCodeType.HELLO:
             self.__heartbeater.delay = data["heartbeat_interval"]
             self.__heartbeater.event.set()
@@ -197,8 +214,11 @@ class VoiceConnectionWebSocketClient:
             await self.__identify(shard)
 
         if op == VoiceOpCodeType.READY:
-            await self._connect_to_udp(data)
+            self._ip = data.get("ip")
+            self._port = data.get("port")
+            await self._connect_to_udp()
             self._ready = data
+            self.ssrc = data.get("ssrc")
             log.debug(f"READY (session_id: {self.session_id}, sequence: {self.sequence})")
             self.ready.set()
 
@@ -210,14 +230,33 @@ class VoiceConnectionWebSocketClient:
             self.__heartbeater.event.set()
 
         if op == VoiceOpCodeType.SESSION_DESCRIPTION:
-            self.__secret_key = data["secret_key"]
+            self.__box = SecretBox(bytes(data["secret_key"]))
             self._media_session_id = data["media_session_id"]
             self._mode = data["mode"]
 
         if op == VoiceOpCodeType.RESUME:
             await self.__resume()
 
+        if op == VoiceOpCodeType.RESUMED:
+            log.debug(f"RESUMED (session_id: {self.session_id}, seq: {self.sequence})")
+
         # TODO: other opcodes
+
+    async def __start_speaking(self) -> None:
+        payload = {
+            "op": VoiceOpCodeType.SPEAKING,
+            "d": {"speaking": 1 << 0, "delay": 0, "ssrc": self.ssrc},
+        }
+        log.debug(f"SPEAKING: {payload}")
+        await self._send_packet(payload)
+
+    async def __stop_speaking(self) -> None:
+        payload = {
+            "op": VoiceOpCodeType.SPEAKING,
+            "d": {"speaking": 0, "delay": 0, "ssrc": self.ssrc},
+        }
+        log.debug(f"SPEAKING: {payload}")
+        await self._send_packet(payload)
 
     async def __restart(self):
         """Restart the client's connection and heartbeat with the Gateway."""
@@ -295,18 +334,6 @@ class VoiceWebSocketClient(WebSocketClient):
         super().__init__(token, intents, session_id, sequence)
         self.__voice_connect_data: Dict[int, dict] = {}
         self._voice_connections: Dict[int, VoiceConnectionWebSocketClient] = {}
-
-    # Note: calling a "private" function of WebSocketClient will have to be super()-ed like below
-    def __contextualize(self, data: dict) -> object:
-        return super()._WebSocketClient__contextualize(data)
-
-    def __sub_command_context(
-        self, data: Union[dict, Option], context: object
-    ) -> Union[Tuple[str], dict]:
-        return super()._WebSocketClient__sub_command_context(data, context)
-
-    def __option_type_context(self, context: object, type: int) -> dict:
-        return super()._WebSocketClient__option_type_context(context, type)
 
     async def _handle_connection(
         self,
@@ -393,9 +420,10 @@ class VoiceWebSocketClient(WebSocketClient):
 
     async def _disconnect(self, guild_id: int) -> None:
         """
+        Closes an existing voice connection on a guild.
 
-        :param guild_id:
-        :return:
+        :param guild_id: The id of the guild to close the connection of
+        :type guild_id: int
         """
 
         self._voice_connections[guild_id]._close = True
@@ -413,9 +441,56 @@ class VoiceWebSocketClient(WebSocketClient):
 
 class VoiceState(DictSerializerMixin):
     """
-    A class object representing the gateway event ``VOICE_STATE_UPDATE``
+    A class object representing the gateway event ``VOICE_STATE_UPDATE``.
 
-    todo doc
+    This class creates an object every time the event ``VOICE_STATE_UPDATE`` is received from the discord API.
+    It contains information about the user's update voice information. Additionally, the last voice state is cached,
+    allowing you to see, what attributes of the user's voice information change.
+
+    Attributes:
+    -----------
+    _json : dict
+        All data of the object stored as dictionary
+
+    member : Member
+        The member whose VoiceState was updated
+
+    user_id : int
+        The id of the user whose VoiceState was updated. This is technically the same as the "member id",
+        but it is called `user_id` because of API terminology.
+
+    suppress : bool
+        Whether the user is muted by the current user(-> bot)
+
+    session_id : int
+        The id of the session
+
+    self_video : bool
+        Whether the user's camera is enabled.
+
+    self_mute : bool
+        Whether the user is muted by themselves
+
+    self_deaf : bool
+        Whether the user is deafened by themselves
+
+    self_stream : bool
+        Whether the user is streaming in the current channel
+
+    request_to_speak_timestamp : datetime
+        Only for stage-channels; when the user requested permissions to speak in the stage channel
+
+    mute : bool
+        Whether the user's microphone is muted by the server
+
+    guild_id : int
+        The id of the guild in what the update took action
+
+    deaf : bool
+        Whether the user is deafened by the guild
+
+    channel_id : int
+        The id of the channel the update took action
     """
 
     __slots__ = (
@@ -438,10 +513,12 @@ class VoiceState(DictSerializerMixin):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.member = Member(**self.member) if self._json.get("member") else None
         self.channel_id = Snowflake(self.channel_id) if self._json.get("channel_id") else None
         self.guild_id = Snowflake(self.guild_id) if self._json.get("guild_id") else None
         self.user_id = Snowflake(self.user_id) if self._json.get("user_id") else None
+        self.member = (
+            Member(**self.member, _client=self._client) if self._json.get("member") else None
+        )
         self.request_to_speak_timestamp = (
             datetime.fromisoformat(self.request_to_speak_timestamp)
             if self._json.get("request_to_speak_timestamp")
@@ -450,15 +527,72 @@ class VoiceState(DictSerializerMixin):
 
     @property
     def before(self) -> "VoiceState":
+        """
+        Returns the last voice state of the member, allowing to check what changed.
+
+        :return: VoiceState object of the last update of that user
+        :rtype: VoiceState
+        """
         return VoiceState(**self._client.cache.voice_states.get(str(self.user_id))[0])
 
-    # TODO: Helpers
+    async def mute_member(self, reason: Optional[str]) -> Member:
+        """
+        Mutes the current member.
+
+        :param reason: The reason of the muting, optional
+        :type reason: str
+        :return: The modified member object
+        :rtype: GuildMember
+        """
+        return await self.member.modify(guild_id=int(self.guild_id), mute=True, reason=reason)
+
+    async def deafen_member(self, reason: Optional[str]) -> Member:
+        """
+        Deafens the current member.
+
+        :param reason: The reason of the deafening, optional
+        :type reason: str
+        :return: The modified member object
+        :rtype: GuildMember
+        """
+        return await self.member.modify(guild_id=int(self.guild_id), deaf=True, reason=reason)
+
+    async def move_member(self, channel_id: int, *, reason: Optional[str]) -> Member:
+        """
+        Moves the member to another channel.
+
+        :param channel_id: The ID of the channel to move the user to
+        :type channel_id: int
+        :param reason: The reason of the move
+        :type reason: str
+        :return: The modified member object
+        :rtype: GuildMember
+        """
+        return await self.member.modify(
+            guild_id=int(self.guild_id), channel_id=channel_id, reason=reason
+        )
+
+    async def get_channel(self) -> Channel:
+        """
+        Gets the channel in what the update took place.
+
+        :rtype: Channel
+        """
+        return Channel(**await self._client.get_channel(int(self.channel_id)), _client=self._client)
+
+    async def get_guild(self) -> Guild:
+        """
+        Gets the guild in what the update took place.
+
+        :rtype: Guild
+        """
+        return Guild(**await self._client.get_guild(int(self.channel_id)), _client=self._client)
 
 
 WebSocketClient = VoiceWebSocketClient
 
 
-def _update_instances(client: interactions.Client):
+def _update_instances(client: Client):
     if not isinstance(client._websocket, VoiceWebSocketClient):
         old_websocket = client._websocket
         new_websocket = VoiceWebSocketClient(old_websocket._http.token, old_websocket._intents)
@@ -478,7 +612,8 @@ def _update_instances(client: interactions.Client):
         new_websocket.sequence = old_websocket.sequence
         new_websocket.ready = old_websocket.ready
         new_websocket._last_send = old_websocket._last_send
-        new_websocket.last_ack = old_websocket._last_ack
+        new_websocket._last_ack = old_websocket._last_ack
+        new_websocket.latency = old_websocket.latency
 
         client._websocket = new_websocket
 
@@ -499,7 +634,7 @@ def _update_instances(client: interactions.Client):
         client._websocket._http.cache = new_cache
 
 
-def setup(client: interactions.Client, voice_client: bool = False):
+def setup(client: Client, voice_client: bool = False):
     """
     Sets up the voice ext. If `voice_client` is set to true, the client will be modified, so it can connect to a
     voice channel. Otherwise, this ext will only dispatch voice state updates.

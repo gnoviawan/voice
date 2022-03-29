@@ -20,13 +20,16 @@ class VoiceClient(Client):
     ) -> None:
         """
         Connects the bot to a voice channel.
-        :param channel_id:
-        :param guild_id:
-        :param self_deaf:
-        :param self_mute:
-        :return:
+
+        :param channel_id: The id of the channel to connect to
+        :type channel_id: int
+        :param guild_id: The id of the guild the channel belongs to
+        :type guild_id: int
+        :param self_deaf: whether the bot is self-deafened
+        :type self_deaf: bool
+        :param self_mute: whether the bot is self-muted
+        :type self_mute: bool
         """
-        # check connection status if already "connected".
 
         if guild_id in self._websocket._voice_connections.keys():
             if self._websocket._voice_connections[guild_id]._closed is True:
@@ -47,9 +50,10 @@ class VoiceClient(Client):
         guild_id: int,
     ) -> None:
         """
-        Removes the bot of the channel
-        :param guild_id:
-        :return:
+        Removes the bot of the channel.
+
+        :param guild_id: The id of the guild to disconnect the bot from
+        :type guild_id: int
         """
 
         if guild_id not in self._websocket._voice_connections.keys():
@@ -58,4 +62,4 @@ class VoiceClient(Client):
 
         return await self._websocket._disconnect(guild_id=guild_id)
 
-    # TODO: more methods
+    # TODO: play method

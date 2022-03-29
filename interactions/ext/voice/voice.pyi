@@ -1,9 +1,12 @@
 import interactions
-from interactions import ClientPresence, Option
+from interactions.api.models.presence import ClientPresence
+from interactions.models.command import Option
 from interactions.api.models.misc import MISSING, DictSerializerMixin, Snowflake
 from typing import Optional, Union, Tuple, Dict, Any, List
 from datetime import datetime
 from interactions.api.models.member import Member
+from interactions.api.models.guild import Guild
+from interactions.api.models.channel import Channel
 from interactions.api.gateway import WebSocketClient
 from interactions.api.cache import Cache, Storage
 from interactions.api.http.client import HTTPClient
@@ -75,5 +78,10 @@ class VoiceState(DictSerializerMixin):
 
     @property
     def before(self) -> VoiceState: ...
+    async def mute_member(self, reason: Optional[str]) -> Member: ...
+    async def deafen_member(self, reason: Optional[str]) -> Member: ...
+    async def move_member(self, channel_id: int, *, reason: Optional[str]) -> Member: ...
+    async def get_channel(self) -> Channel: ...
+    async def get_guild(self) -> Guild: ...
 
 def setup(client: interactions.Client, voice_client: bool = False): ...
