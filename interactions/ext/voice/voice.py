@@ -216,9 +216,9 @@ class VoiceConnectionWebSocketClient:
         if op == VoiceOpCodeType.READY:
             self._ip = data.get("ip")
             self._port = data.get("port")
+            self.ssrc = data.get("ssrc")
             await self._connect_to_udp()
             self._ready = data
-            self.ssrc = data.get("ssrc")
             log.debug(f"READY (session_id: {self.session_id}, sequence: {self.sequence})")
             self.ready.set()
 
@@ -613,7 +613,6 @@ def _update_instances(client: Client):
         new_websocket.ready = old_websocket.ready
         new_websocket._last_send = old_websocket._last_send
         new_websocket._last_ack = old_websocket._last_ack
-        new_websocket.latency = old_websocket.latency
 
         client._websocket = new_websocket
 

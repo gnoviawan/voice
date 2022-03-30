@@ -10,7 +10,6 @@ from interactions.api.models.channel import Channel
 from interactions.api.gateway import WebSocketClient
 from interactions.api.cache import Cache, Storage
 from interactions.api.http.client import HTTPClient
-# currently import error, fixed when the http-PR is merged. Because of this, required will be v4.1.1 and not v4.1.0
 
 class VoiceCache(Cache):
     def __init__(self): ...
