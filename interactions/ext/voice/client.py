@@ -62,4 +62,7 @@ class VoiceClient(Client):
 
         return await self._websocket._disconnect(guild_id=guild_id)
 
+    async def play(self) -> None:
+        raise NotImplementedError
+
     # TODO: play method
