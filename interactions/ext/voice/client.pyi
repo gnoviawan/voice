@@ -1,4 +1,4 @@
-from interactions.client import Client
+from interactions.client.bot import Client
 from .voice import VoiceWebSocketClient, VoiceCache
 
 class VoiceClient(Client):

@@ -1,7 +1,7 @@
 from logging import Logger
 
 from interactions.base import get_logger
-from interactions.client import Client
+from interactions.client.bot import Client
 
 log: Logger = get_logger("client")
 

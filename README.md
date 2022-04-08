@@ -50,7 +50,7 @@ bot.start()
 from interactions import Client, CommandContext, Channel
 from interactions.ext.voice import VoiceState, VoiceClient
 
-bot: VoiceClient = Client(token="...")
+bot: VoiceClient = VoiceClient(token="...")
 bot.load("interactions.ext.voice", voice_client=True)
 
 @bot.event
@@ -63,6 +63,3 @@ async def connect(ctx: CommandContext, channel: Channel):
     await bot.connect(channel_id=int(channel.id), guild_id=int(ctx.guild_id), self_deaf=True, self_mute=False)
     await bot.play(file="C:/...")
 ```
-
-This will underline `Client(token="...")` and say ``Expected type 'VoiceClient', got 'Client' instead``.
-You can safely ignore this, since it will be replaced by a ``VoiceCient`` when loading.

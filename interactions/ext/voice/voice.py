@@ -14,7 +14,8 @@ from nacl.secret import SecretBox
 
 from interactions.api.cache import Cache, Item, Storage
 from interactions.api.enums import OpCodeType
-from interactions.api.gateway import WebSocketClient, _Heartbeat
+from interactions.api.gateway.client import WebSocketClient
+from interactions.api.gateway.heartbeat import _Heartbeat
 from interactions.api.http.client import HTTPClient
 from interactions.api.models.channel import Channel
 from interactions.api.models.guild import Guild

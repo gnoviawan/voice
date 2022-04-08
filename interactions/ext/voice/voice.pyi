@@ -1,13 +1,12 @@
 import interactions
 from interactions.api.models.presence import ClientPresence
-from interactions.models.command import Option
 from interactions.api.models.misc import MISSING, DictSerializerMixin, Snowflake
 from typing import Optional, Union, Tuple, Dict, Any, List
 from datetime import datetime
 from interactions.api.models.member import Member
 from interactions.api.models.guild import Guild
 from interactions.api.models.channel import Channel
-from interactions.api.gateway import WebSocketClient
+from interactions.api.gateway.client import WebSocketClient
 from interactions.api.cache import Cache, Storage
 from interactions.api.http.client import HTTPClient
 
@@ -34,11 +33,6 @@ class VoiceWebSocketClient(WebSocketClient):
     __voice_connect_data: Dict[int, dict]
     _voice_connections: Dict[int, VoiceConnectionWebSocketClient]
 
-    def __contextualize(self, data: dict) -> object: ...
-    def __sub_command_context(
-        self, data: Union[dict, Option], context: object
-    ) -> Union[Tuple[str], dict]: ...
-    def __option_type_context(self, context: object, type: int) -> dict: ...
     async def _handle_connection(
         self,
         stream: Dict[str, Any],
