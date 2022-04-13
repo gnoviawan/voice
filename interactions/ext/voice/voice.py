@@ -9,12 +9,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from aiohttp import WSMessage, WSMsgType
 from aiohttp.http import WS_CLOSED_MESSAGE, WS_CLOSING_MESSAGE
+from nacl.secret import SecretBox  # noqa, for now
+
 from interactions.api.error import InteractionException
 from interactions.api.gateway.heartbeat import _Heartbeat
 from interactions.api.http.client import HTTPClient
 from interactions.api.models.misc import MISSING
 from interactions.base import get_logger
-from nacl.secret import SecretBox
 
 log = get_logger("voice")
 
@@ -82,7 +83,9 @@ class VoiceConnectionWebSocketClient:
         self._ip = None
         self._mode = None
         self._closed = False
-        self._close = False  # determines whether closing of the connection is wanted or not -> disconnect
+        self._close = (
+            False  # determines whether closing of the connection is wanted or not -> disconnect
+        )
         self._media_session_id = None
         self.__heartbeater: _Heartbeat = _Heartbeat(loop=None)
         self._heartbeats = 0
@@ -137,11 +140,7 @@ class VoiceConnectionWebSocketClient:
             await self._client.close()
             return WS_CLOSED_MESSAGE
 
-        return (
-            loads(str(packet.data))
-            if packet and isinstance(packet.data, (str, int))
-            else None
-        )
+        return loads(str(packet.data)) if packet and isinstance(packet.data, (str, int)) else None
 
     async def _connect(
         self,
@@ -166,11 +165,7 @@ class VoiceConnectionWebSocketClient:
                 if stream is None:
                     continue
 
-                if (
-                    self._client is None
-                    or stream == WS_CLOSED_MESSAGE
-                    or stream == WSMsgType.CLOSE
-                ):
+                if self._client is None or stream == WS_CLOSED_MESSAGE or stream == WSMsgType.CLOSE:
                     await self._connect()
                     break
 

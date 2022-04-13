@@ -1,19 +1,30 @@
-from asyncio import Event, sleep
+from asyncio import Event
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiohttp import WSMessage, WSMsgType
 from aiohttp.http import WS_CLOSED_MESSAGE, WS_CLOSING_MESSAGE
-from interactions.api.cache import Item
+
+from interactions.api.cache import Cache, Item, Storage
 from interactions.api.enums import OpCodeType
 from interactions.api.gateway.client import WebSocketClient
 from interactions.api.models.misc import MISSING
 from interactions.api.models.presence import ClientPresence
 from interactions.base import get_logger
 
-from .state import VoiceCache, VoiceState
+from .state import VoiceState
 from .voice import VoiceConnectionWebSocketClient
 
 log = get_logger("voice")
+
+
+class VoiceCache(Cache):
+    """
+    A modified cache to store VoiceState data.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.voice_states: Storage = Storage()
 
 
 class VoiceWebSocketClient(WebSocketClient):
@@ -81,7 +92,6 @@ class VoiceWebSocketClient(WebSocketClient):
     async def _dispatch_voice_event(
         self, event: str, data: dict, stream: Optional[dict] = MISSING
     ) -> None:
-        name: str = event.lower()
         if event == "VOICE_STATE_UPDATE":
             if data["user_id"] == self.user.id:
                 if data["guild_id"] not in self._voice_connect_data:
@@ -105,6 +115,7 @@ class VoiceWebSocketClient(WebSocketClient):
 
                 data["_client"] = self._http
 
+            name: str = event.lower()
             self._dispatch.dispatch(f"on_{name}", VoiceState(**data))  # noqa
         else:
             if data["guild_id"] not in self._voice_connect_data:
@@ -155,6 +166,12 @@ class VoiceWebSocketClient(WebSocketClient):
         )
         self._voice_connections[guild_id] = voice_client
         return await voice_client._connect()
+
+    async def _speak(self) -> None:
+        ...
+
+    async def _silence(self) -> None:
+        ...
 
     async def _disconnect_vc(self, guild_id: str) -> None:
         """

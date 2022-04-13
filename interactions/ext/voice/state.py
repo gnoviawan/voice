@@ -1,21 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
-from interactions.api.cache import Cache, Storage
 from interactions.api.models.channel import Channel
 from interactions.api.models.guild import Guild
 from interactions.api.models.member import Member
 from interactions.api.models.misc import DictSerializerMixin, Snowflake
-
-
-class VoiceCache(Cache):
-    """
-    A modified cache to store VoiceState data.
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.voice_states: Storage = Storage()
 
 
 class VoiceState(DictSerializerMixin):
@@ -24,6 +13,7 @@ class VoiceState(DictSerializerMixin):
     This class creates an object every time the event ``VOICE_STATE_UPDATE`` is received from the discord API.
     It contains information about the user's update voice information. Additionally, the last voice state is cached,
     allowing you to see, what attributes of the user's voice information change.
+
     Attributes:
     -----------
     _json : dict
@@ -77,15 +67,11 @@ class VoiceState(DictSerializerMixin):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.channel_id = (
-            Snowflake(self.channel_id) if self._json.get("channel_id") else None
-        )
+        self.channel_id = Snowflake(self.channel_id) if self._json.get("channel_id") else None
         self.guild_id = Snowflake(self.guild_id) if self._json.get("guild_id") else None
         self.user_id = Snowflake(self.user_id) if self._json.get("user_id") else None
         self.member = (
-            Member(**self.member, _client=self._client)
-            if self._json.get("member")
-            else None
+            Member(**self.member, _client=self._client) if self._json.get("member") else None
         )
         self.request_to_speak_timestamp = (
             datetime.fromisoformat(self.request_to_speak_timestamp)
@@ -116,11 +102,9 @@ class VoiceState(DictSerializerMixin):
         :param reason: The reason of the muting, optional
         :type reason: str
         :return: The modified member object
-        :rtype: GuildMember
+        :rtype: Member
         """
-        return await self.member.modify(
-            guild_id=int(self.guild_id), mute=True, reason=reason
-        )
+        return await self.member.modify(guild_id=int(self.guild_id), mute=True, reason=reason)
 
     async def deafen_member(self, reason: Optional[str]) -> Member:
         """
@@ -128,11 +112,9 @@ class VoiceState(DictSerializerMixin):
         :param reason: The reason of the deafening, optional
         :type reason: str
         :return: The modified member object
-        :rtype: GuildMember
+        :rtype: Member
         """
-        return await self.member.modify(
-            guild_id=int(self.guild_id), deaf=True, reason=reason
-        )
+        return await self.member.modify(guild_id=int(self.guild_id), deaf=True, reason=reason)
 
     async def move_member(self, channel_id: int, *, reason: Optional[str]) -> Member:
         """
@@ -142,7 +124,7 @@ class VoiceState(DictSerializerMixin):
         :param reason: The reason of the move
         :type reason: str
         :return: The modified member object
-        :rtype: GuildMember
+        :rtype: Member
         """
         return await self.member.modify(
             guild_id=int(self.guild_id), channel_id=channel_id, reason=reason
@@ -153,15 +135,11 @@ class VoiceState(DictSerializerMixin):
         Gets the channel in what the update took place.
         :rtype: Channel
         """
-        return Channel(
-            **await self._client.get_channel(int(self.channel_id)), _client=self._client
-        )
+        return Channel(**await self._client.get_channel(int(self.channel_id)), _client=self._client)
 
     async def get_guild(self) -> Guild:
         """
         Gets the guild in what the update took place.
         :rtype: Guild
         """
-        return Guild(
-            **await self._client.get_guild(int(self.channel_id)), _client=self._client
-        )
+        return Guild(**await self._client.get_guild(int(self.channel_id)), _client=self._client)
