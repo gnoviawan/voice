@@ -16,3 +16,4 @@ __pycache__
 *.pypirc
 Token
 SECRET_TOKEN
+*test*.py

@@ -1,17 +1,19 @@
-from logging import Logger
-
 from interactions.base import get_logger
 from interactions.client.bot import Client
 
-log: Logger = get_logger("client")
+from .state import VoiceCache
+from .websocket import VoiceWebSocketClient
+
+log = get_logger("voice")
 
 
 class VoiceClient(Client):
-    """
-    A modified ``Client`` class what allows connecting to voice_channels
-    """
+    def __init__(self, token: str, **kwargs) -> None:
+        super().__init__(token, **kwargs)
+        self._websocket = VoiceWebSocketClient(token, self._intents, me=self.me)
+        self._http.cache = VoiceCache()
 
-    async def connect(
+    async def connect_vc(
         self,
         channel_id: int,
         guild_id: int,
@@ -20,7 +22,6 @@ class VoiceClient(Client):
     ) -> None:
         """
         Connects the bot to a voice channel.
-
         :param channel_id: The id of the channel to connect to
         :type channel_id: int
         :param guild_id: The id of the guild the channel belongs to
@@ -41,17 +42,32 @@ class VoiceClient(Client):
                 )
                 return
 
-        return await self._websocket._connect(
-            guild_id=guild_id, channel_id=channel_id, self_mute=self_mute, self_deaf=self_deaf
+        await self._websocket._connect_vc(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            self_mute=self_mute,
+            self_deaf=self_deaf,
         )
 
-    async def disconnect(
+    async def play(self, guild_id: int) -> None:
+        """
+        Plays the audio stream.
+        :param guild_id: The id of the guild to play the audio stream in
+        :type guild_id: int
+        """
+
+        if guild_id not in self._websocket._voice_connections.keys():
+            log.warning("Not connected to a voice channel!")
+            return
+
+        return await self._websocket._voice_connections[guild_id]._speak()
+
+    async def disconnect_vc(
         self,
         guild_id: int,
     ) -> None:
         """
         Removes the bot of the channel.
-
         :param guild_id: The id of the guild to disconnect the bot from
         :type guild_id: int
         """
@@ -60,9 +76,11 @@ class VoiceClient(Client):
             log.warning("Not connected to a voice channel!")
             return
 
-        return await self._websocket._disconnect(guild_id=guild_id)
+        return await self._websocket._disconnect_vc(guild_id=guild_id)
 
-    async def play(self) -> None:
-        raise NotImplementedError
+    async def disconnect_all_vc(self) -> None:
+        """
+        Disconnects all voice connections.
+        """
 
-    # TODO: play method
+        return await self._websocket._disconnect_all_vc()
