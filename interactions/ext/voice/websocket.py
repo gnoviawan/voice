@@ -90,10 +90,10 @@ class VoiceWebSocketClient(WebSocketClient):
         await self._dispatch_voice_event(event, data, stream)
 
     async def _dispatch_voice_event(
-        self, event: str, data: dict, stream: Optional[dict] = MISSING
+        self, event: str, data: dict
     ) -> None:
         if event == "VOICE_STATE_UPDATE":
-            if data["user_id"] == self.user.id:
+            if data["user_id"] == self.user.id: # TODO: check if user joined.
                 if data["guild_id"] not in self._voice_connect_data:
                     self._voice_connect_data[data["guild_id"]] = {}
 
@@ -102,18 +102,21 @@ class VoiceWebSocketClient(WebSocketClient):
                     user_id=int(data["user_id"]),
                 )
 
-                _item = Item(id=data["user_id"], value=[data])
+            _item = Item(id=data["user_id"], value=[data])
 
-                # TODO: Fix this :P
-                if _item.id in self._http.cache.voice_states.values.keys():
-                    if len(self._http.cache.voice_states.values[_item.id]) >= 2:
-                        self._http.cache.voice_states.values[_item.id].pop(0)
-                    self._http.cache.voice_states.values[_item.id].extend(_item.value)
-                    # doing it manually since the update meth is broken.
-                else:
-                    self._http.cache.voice_states.add(_item)
+            # Fix this :P
+            # this isn't a problem, actually. It actually makes the list per user.
+            # Also an user can only have one voice state
 
-                data["_client"] = self._http
+            if _item.id in self._http.cache.voice_states.values.keys():
+                if len(self._http.cache.voice_states.values[_item.id]) >= 2:
+                    self._http.cache.voice_states.values[_item.id].pop(0)
+                self._http.cache.voice_states.values[_item.id].extend(_item.value)
+                # doing it manually since the update meth is broken.
+            else:
+                self._http.cache.voice_states.add(_item)
+
+            data["_client"] = self._http
 
             name: str = event.lower()
             self._dispatch.dispatch(f"on_{name}", VoiceState(**data))  # noqa
@@ -166,12 +169,6 @@ class VoiceWebSocketClient(WebSocketClient):
         )
         self._voice_connections[guild_id] = voice_client
         return await voice_client._connect()
-
-    async def _speak(self) -> None:
-        ...
-
-    async def _silence(self) -> None:
-        ...
 
     async def _disconnect_vc(self, guild_id: str) -> None:
         """

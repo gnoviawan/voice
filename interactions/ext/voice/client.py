@@ -1,8 +1,7 @@
 from interactions.base import get_logger
 from interactions.client.bot import Client
 
-from .state import VoiceCache
-from .websocket import VoiceWebSocketClient
+from .websocket import VoiceWebSocketClient, VoiceCache
 
 log = get_logger("voice")
 
@@ -60,7 +59,7 @@ class VoiceClient(Client):
             log.warning("Not connected to a voice channel!")
             return
 
-        return await self._websocket._voice_connections[guild_id]._speak()
+        return await self._websocket._voice_connections[guild_id]._start_speaking()
 
     async def disconnect_vc(
         self,
