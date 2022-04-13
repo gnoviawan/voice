@@ -1,0 +1,18 @@
+# env/venv/gh-based
+*.egg
+*.egg-info/
+*.eggs/
+*.pyc
+.idea
+.cache/
+_build/
+build/
+dist/
+.env
+.venv
+.vscode
+__pycache__
+*.token
+*.pypirc
+Token
+SECRET_TOKEN
