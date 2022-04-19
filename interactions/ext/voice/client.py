@@ -1,7 +1,7 @@
 from interactions.base import get_logger
 from interactions.client.bot import Client
 
-from .websocket import VoiceWebSocketClient, VoiceCache
+from .websocket import VoiceCache, VoiceWebSocketClient
 
 log = get_logger("voice")
 

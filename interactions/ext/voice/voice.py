@@ -9,13 +9,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from aiohttp import WSMessage, WSMsgType
 from aiohttp.http import WS_CLOSED_MESSAGE, WS_CLOSING_MESSAGE
-from nacl.secret import SecretBox  # noqa, for now
-
 from interactions.api.error import InteractionException
 from interactions.api.gateway.heartbeat import _Heartbeat
 from interactions.api.http.client import HTTPClient
 from interactions.api.models.misc import MISSING
 from interactions.base import get_logger
+from nacl.secret import SecretBox  # noqa, for now
 
 log = get_logger("voice")
 

@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiohttp import WSMessage, WSMsgType
 from aiohttp.http import WS_CLOSED_MESSAGE, WS_CLOSING_MESSAGE
-
 from interactions.api.cache import Cache, Item, Storage
 from interactions.api.enums import OpCodeType
 from interactions.api.gateway.client import WebSocketClient
@@ -89,11 +88,9 @@ class VoiceWebSocketClient(WebSocketClient):
         log.debug(f"{event}: {data}")
         await self._dispatch_voice_event(event, data, stream)
 
-    async def _dispatch_voice_event(
-        self, event: str, data: dict
-    ) -> None:
+    async def _dispatch_voice_event(self, event: str, data: dict) -> None:
         if event == "VOICE_STATE_UPDATE":
-            if data["user_id"] == self.user.id: # TODO: check if user joined.
+            if data["user_id"] == self.user.id:  # TODO: check if user joined.
                 if data["guild_id"] not in self._voice_connect_data:
                     self._voice_connect_data[data["guild_id"]] = {}
 
