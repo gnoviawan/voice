@@ -3,7 +3,7 @@ from interactions.client.bot import Client
 
 from .websocket import VoiceCache, VoiceWebSocketClient
 
-log = get_logger("voice")
+log = get_logger("client")
 
 
 class VoiceClient(Client):

@@ -13,7 +13,7 @@ from interactions.base import get_logger
 from .state import VoiceState
 from .voice import VoiceConnectionWebSocketClient
 
-log = get_logger("voice")
+log = get_logger("gateway")
 
 
 class VoiceCache(Cache):
