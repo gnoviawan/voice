@@ -103,7 +103,7 @@ class VoiceWebSocketClient(WebSocketClient):
 
             # Fix this :P
             # this isn't a problem, actually. It actually makes the list per user.
-            # Also an user can only have one voice state
+            # Also, a user can only have one voice state
 
             if _item.id in self._http.cache.voice_states.values.keys():
                 if len(self._http.cache.voice_states.values[_item.id]) >= 2:
