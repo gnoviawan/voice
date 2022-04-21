@@ -14,6 +14,8 @@ setup_kwargs = {
     "name": "interactions-voice",
     "version": "1.0.0",
     "description": "A voice-capable client for interactions.py",
+    # fmt: off
+    # I want this formatted like this, it looks clearer and better
     "long_description":
         "# voice\n_______\n\nHello! If you came across this library, you probably tried to implement "
         "voice functions with [interactions.py](https://github.com/interactions-py/library), "
@@ -33,6 +35,7 @@ setup_kwargs = {
         "options=[...])\nasync def connect(ctx: CommandContext, channel: Channel):\n    await "
         "bot.connect_vc(channel_id=int(channel.id), guild_id=int(ctx.guild_id), self_deaf=True, "
         'self_mute=False)\n    await bot.play(file="C:/...")\n```\n',
+    # fmt: on
     "author": "EdVraz",
     "author_email": "edvraz12@gmail.com",
     "maintainer": None,
