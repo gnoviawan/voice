@@ -88,7 +88,7 @@ class VoiceWebSocketClient(WebSocketClient):
         log.debug(f"{event}: {data}")
         await self._dispatch_voice_event(event, data, stream)
 
-    async def _dispatch_voice_event(self, event: str, data: dict) -> None:
+    async def _dispatch_voice_event(self, event: str, data: dict, stream) -> None:
         if event == "VOICE_STATE_UPDATE":
             if data["user_id"] == self.user.id:  # TODO: check if user joined.
                 if data["guild_id"] not in self._voice_connect_data:
