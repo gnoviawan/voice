@@ -7,7 +7,7 @@ package_data = {"": ["*"]}
 
 install_requires = [
     "PyNaCl>=1.5.0,<2.0.0",
-    "discord-py-interactions @ " "git+https://github.com/interactions-py/library.git@4.1.1-rc.1",
+    "discord-py-interactions>=4.2.1"
 ]
 
 setup_kwargs = {
