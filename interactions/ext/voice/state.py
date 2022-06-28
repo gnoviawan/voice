@@ -6,6 +6,8 @@ from interactions.api.models.guild import Guild
 from interactions.api.models.member import Member
 from interactions.api.models.misc import DictSerializerMixin, Snowflake
 
+__all__ = "VoiceState"
+
 
 class VoiceState(DictSerializerMixin):
     """

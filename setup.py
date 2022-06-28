@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 from setuptools import setup
 
-packages = ["voice"]
+packages = ["interactions.ext.voice"]
 
 package_data = {"": ["*"]}
 
-install_requires = ["PyNaCl>=1.5.0,<2.0.0", "discord-py-interactions<=4.2.1"]
+install_requires = ["PyNaCl>=1.5.0,<2.0.0", "discord-py-interactions>=4.2.1"]
 
 setup_kwargs = {
     "name": "interactions-voice",

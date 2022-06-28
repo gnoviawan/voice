@@ -16,7 +16,12 @@ from interactions.api.models.misc import MISSING
 from interactions.base import get_logger
 from nacl.secret import SecretBox  # noqa, for now
 
+__all__ = ("VoiceException", "VoiceOpCodeType", "SpeakingType", "VoiceConnectionWebSocketClient")
+
 log = get_logger("voice")
+
+
+# TODO: REWRITE TO LIBRARYEXCEPTION
 
 
 class VoiceException(InteractionException):
