@@ -1,14 +1,15 @@
-from typing import Coroutine
-
-from interactions.client.bot import Client
+from typing import TypeVar, Union
+from inspect import iscoroutinefunction
+from interactions.client.bot import Client as _Client
 
 from ._dummy import _VoiceClient
 from .websocket import VoiceWebSocketClient
 
 __all__ = "setup"
 
+Client = TypeVar("Client", bound=_Client)
 
-def setup(_client: Client):
+def setup(_client: Client) -> Union[Client, _VoiceClient]:
     _websocket = VoiceWebSocketClient(token=_client._token, intents=_client._intents, me=_client.me)
     _voice_client = _VoiceClient()
 
@@ -34,7 +35,9 @@ def setup(_client: Client):
         if (
             not attrib.startswith("_")
             and not attrib.endswith("_")
-            and isinstance(getattr(_voice_client, attrib), Coroutine)
+            and iscoroutinefunction(getattr(_voice_client, attrib))
             and attrib not in _dir
         ):
             setattr(_client, attrib, getattr(_voice_client, attrib))
+
+    return _client
