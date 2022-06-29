@@ -38,3 +38,25 @@ async def connect(ctx: CommandContext, channel: Channel):
     await bot.connect_vc(channel_id=int(channel.id), guild_id=int(ctx.guild_id), self_deaf=True, self_mute=False)
     await bot.play(file="C:/...")
 ```
+
+
+If you do not want to use the ``VoiceClient`` object, you can also use the library this way:
+
+```python
+from interactions import Client, CommandContext, Channel
+from interactions.ext.voice import setup, VoiceState
+
+bot: Client = Client(token="...")
+setup(bot)
+
+
+@bot.event
+async def on_voice_state_update(vs: VoiceState):
+    print(vs.self_mute)
+    ...
+
+@bot.command(name="connect", description="...", options=[...])
+async def connect(ctx: CommandContext, channel: Channel):
+    await bot.connect_vc(channel_id=int(channel.id), guild_id=int(ctx.guild_id), self_deaf=True, self_mute=False)
+    await bot.play(file="C:/...")
+```
