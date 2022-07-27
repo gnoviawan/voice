@@ -4,10 +4,11 @@ from typing import Optional
 from interactions.api.models.channel import Channel
 from interactions.api.models.guild import Guild
 from interactions.api.models.member import Member
-from interactions.api.models.misc import DictSerializerMixin, Snowflake
+from interactions.api.models.misc import Snowflake
+from interactions.api.models.attrs_utils import ClientSerializerMixin, define
 
-
-class VoiceState(DictSerializerMixin):
+@define()
+class VoiceState(ClientSerializerMixin):
 
     channel_id: Optional[Snowflake]
     guild_id: Optional[Snowflake]

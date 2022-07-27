@@ -3,32 +3,20 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiohttp import WSMessage, WSMsgType
 from aiohttp.http import WS_CLOSED_MESSAGE, WS_CLOSING_MESSAGE
-from interactions.api.cache import Cache, Item, Storage
+
 from interactions.api.enums import OpCodeType
 from interactions.api.gateway.client import WebSocketClient
-from interactions.api.models.misc import MISSING
+from interactions.api.models.attrs_utils import MISSING
+from interactions.api.models.misc import Snowflake
 from interactions.api.models.presence import ClientPresence
 from interactions.base import get_logger
 
 from .state import VoiceState
 from .voice import VoiceConnectionWebSocketClient
 
-__all__ = (
-    "VoiceCache",
-    "VoiceWebSocketClient",
-)
+__all__ = ("VoiceWebSocketClient",)
 
 log = get_logger("gateway")
-
-
-class VoiceCache(Cache):
-    """
-    A modified cache to store VoiceState data.
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.voice_states: Storage = Storage()
 
 
 class VoiceWebSocketClient(WebSocketClient):
@@ -46,7 +34,6 @@ class VoiceWebSocketClient(WebSocketClient):
         me=MISSING,
     ) -> None:
         super().__init__(token, intents, session_id, sequence)
-        self._http.cache = VoiceCache()
         self._voice_connect_data: Dict[str, dict] = {}
         self._voice_connections: Dict[str, VoiceConnectionWebSocketClient] = {}
         self.user = me
@@ -104,19 +91,20 @@ class VoiceWebSocketClient(WebSocketClient):
                     user_id=int(data["user_id"]),
                 )
 
-            _item = Item(id=data["user_id"], value=[data])
+            _id = Snowflake(data["user_id"])
+            _value = [VoiceState(**data)]
 
             # Fix this :P
             # this isn't a problem, actually. It actually makes the list per user.
             # Also, a user can only have one voice state
 
-            if _item.id in self._http.cache.voice_states.values.keys():
-                if len(self._http.cache.voice_states.values[_item.id]) >= 2:
-                    self._http.cache.voice_states.values[_item.id].pop(0)
-                self._http.cache.voice_states.values[_item.id].extend(_item.value)
+            if _id in self._http.cache[VoiceState].values.keys():
+                if len(self._http.cache[VoiceState].get(_id, [])) >= 2:
+                    self._http.cache[VoiceState].values[_id].pop(0)
+                self._http.cache[VoiceState].values[_id].extend(_value)
                 # doing it manually since the update meth is broken.
             else:
-                self._http.cache.voice_states.add(_item)
+                self._http.cache[VoiceState].add(_value, _id)
 
             data["_client"] = self._http
 

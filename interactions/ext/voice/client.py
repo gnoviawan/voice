@@ -1,7 +1,7 @@
 from interactions.base import get_logger
 from interactions.client.bot import Client
 
-from .websocket import VoiceCache, VoiceWebSocketClient
+from .websocket import VoiceWebSocketClient
 
 __all__ = "VoiceClient"
 
@@ -12,7 +12,6 @@ class VoiceClient(Client):
     def __init__(self, token: str, **kwargs) -> None:
         super().__init__(token, **kwargs)
         self._websocket = VoiceWebSocketClient(token, self._intents, me=self.me)
-        self._http.cache = VoiceCache()
 
     async def connect_vc(
         self,

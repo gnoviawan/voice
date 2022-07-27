@@ -1,15 +1,17 @@
 from datetime import datetime
 from typing import Optional
 
+from interactions.api.models.attrs_utils import ClientSerializerMixin, define, field
 from interactions.api.models.channel import Channel
 from interactions.api.models.guild import Guild
 from interactions.api.models.member import Member
-from interactions.api.models.misc import DictSerializerMixin, Snowflake
+from interactions.api.models.misc import Snowflake
 
 __all__ = "VoiceState"
 
 
-class VoiceState(DictSerializerMixin):
+@define()
+class VoiceState(ClientSerializerMixin):
     """
     A class object representing the gateway event ``VOICE_STATE_UPDATE``.
     This class creates an object every time the event ``VOICE_STATE_UPDATE`` is received from the discord API.
@@ -49,37 +51,13 @@ class VoiceState(DictSerializerMixin):
         The id of the channel the update took action
     """
 
-    __slots__ = (
-        "_client",
-        "_json",
-        "member",
-        "user_id",
-        "suppress",
-        "session_id",
-        "self_video",
-        "self_mute",
-        "self_deaf",
-        "self_stream",
-        "request_to_speak_timestamp",
-        "mute",
-        "guild_id",
-        "deaf",
-        "channel_id",
+    channel_id: Optional[Snowflake] = field(converter=Snowflake, default=None)
+    guild_id: Optional[Snowflake] = field(converter=Snowflake, default=None)
+    user_id: Optional[Snowflake] = field(converter=Snowflake, default=None)
+    member: Optional[Member] = field(converter=Member, default=None)
+    request_to_speak_timestamp: Optional[datetime] = field(
+        converter=datetime.fromisoformat, default=None
     )
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.channel_id = Snowflake(self.channel_id) if self._json.get("channel_id") else None
-        self.guild_id = Snowflake(self.guild_id) if self._json.get("guild_id") else None
-        self.user_id = Snowflake(self.user_id) if self._json.get("user_id") else None
-        self.member = (
-            Member(**self.member, _client=self._client) if self._json.get("member") else None
-        )
-        self.request_to_speak_timestamp = (
-            datetime.fromisoformat(self.request_to_speak_timestamp)
-            if self._json.get("request_to_speak_timestamp")
-            else None
-        )
 
     @property
     def joined(self) -> bool:
@@ -96,7 +74,7 @@ class VoiceState(DictSerializerMixin):
         :return: VoiceState object of the last update of that user
         :rtype: VoiceState
         """
-        return VoiceState(**self._client.cache.voice_states.get(str(self.user_id))[0])
+        return self._client.cache[VoiceState].get(self.user_id)[0]
 
     async def mute_member(self, reason: Optional[str]) -> Member:
         """

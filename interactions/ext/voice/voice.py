@@ -9,12 +9,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from aiohttp import WSMessage, WSMsgType
 from aiohttp.http import WS_CLOSED_MESSAGE, WS_CLOSING_MESSAGE
-from interactions.api.error import InteractionException
+from nacl.secret import SecretBox  # noqa, for now
+
 from interactions.api.gateway.heartbeat import _Heartbeat
 from interactions.api.http.client import HTTPClient
 from interactions.api.models.misc import MISSING
 from interactions.base import get_logger
-from nacl.secret import SecretBox  # noqa, for now
 
 __all__ = ("VoiceException", "VoiceOpCodeType", "SpeakingType", "VoiceConnectionWebSocketClient")
 
@@ -24,7 +24,7 @@ log = get_logger("voice")
 # TODO: REWRITE TO LIBRARYEXCEPTION
 
 
-class VoiceException(InteractionException):
+class VoiceException(Exception):
     """
     This is a derivation of InteractionException in that this is used to represent Voice closing OP codes.
     :ivar ErrorFormatter _formatter: The built-in formatter.
@@ -34,7 +34,7 @@ class VoiceException(InteractionException):
     __slots__ = ("_type", "_lookup", "__type", "_formatter", "kwargs")
 
     def __init__(self, __type, **kwargs):
-        super().__init__(__type, **kwargs)
+        super().__init__(__type)
 
     @staticmethod
     def lookup() -> dict:

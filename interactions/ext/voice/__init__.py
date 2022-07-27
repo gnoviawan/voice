@@ -1,3 +1,3 @@
-from ._setup import *  # noqa: F401 F403
-from .client import *  # noqa: F401 F403
-from .state import *  # noqa: F401 F403
+from .client import VoiceClient  # noqa: F401 F403
+from .setup import setup  # noqa: F401 F403
+from .state import VoiceState  # noqa: F401 F403
